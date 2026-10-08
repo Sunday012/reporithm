@@ -1,4 +1,4 @@
-export default function AnalysisLoading() {
+export default function AnalysisLoading({ message }: { message: string }) {
   return (
     <div className="mx-auto max-w-6xl animate-pulse" aria-live="polite" aria-label="Analyzing repository">
       <div className="h-5 w-32 rounded-full bg-zinc-200 dark:bg-zinc-800" />
@@ -9,7 +9,10 @@ export default function AnalysisLoading() {
           {Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-36 rounded-3xl bg-zinc-200 dark:bg-zinc-800" />)}
         </div>
       </div>
-      <p className="mt-5 text-sm text-zinc-500">Reading repository, contribution, and community signals…</p>
+      <p className="mt-5 text-sm text-zinc-500" aria-live="polite">
+        <span key={message} className="loading-copy">{message}…</span>
+        <span className="ml-2 text-zinc-400">First-time scans can take about a minute.</span>
+      </p>
     </div>
   );
 }

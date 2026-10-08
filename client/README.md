@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Optionally set `GITHUB_TOKEN` in `.env.local` to increase GitHub API limits.
+Copy `.env.example` to `.env.local`. `GITHUB_TOKEN` raises GitHub API limits; `SONARQUBE_URL` and `SONARQUBE_TOKEN` enable verified code-quality results for projects already scanned by SonarQube.
 
 ## Checks
 

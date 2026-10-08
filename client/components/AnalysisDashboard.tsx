@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { Recommendation, RepositoryAnalysis } from "@/lib/types";
 import { cn, formatCompactNumber, formatRelativeDate } from "@/lib/utils";
+import SonarDashboard from "@/components/SonarDashboard";
 
 interface AnalysisDashboardProps {
   analysis: RepositoryAnalysis;
@@ -92,6 +93,8 @@ export default function AnalysisDashboard({ analysis }: AnalysisDashboardProps) 
           ))}
         </section>
       </div>
+
+      <SonarDashboard sonar={analysis.sonar} repositoryFullName={repository.fullName} />
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Panel title="Score breakdown" eyebrow="Why this score">

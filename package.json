@@ -1,0 +1,11 @@
+{
+  "name": "reporithm-workspace",
+  "private": true,
+  "scripts": {
+    "sonar:start": "docker compose -f compose.sonarqube.yml up -d",
+    "sonar:stop": "docker compose -f compose.sonarqube.yml stop",
+    "sonar:setup": "node scripts/setup-sonarqube.mjs",
+    "sonar:scan": "node scripts/scan-local.mjs",
+    "sonar:scan:github": "node scripts/scan-github.mjs"
+  }
+}

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Code2 } from "lucide-react";
 import ModeToggle from "@/components/ModeToggle";
@@ -7,7 +8,14 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 border-b border-black/8 bg-[#f6f7f2]/85 px-5 backdrop-blur-xl dark:border-white/10 dark:bg-[#10120e]/85 sm:px-8">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5" aria-label="Reporithm home">
-          <span className="logo-mark" aria-hidden="true"><i /><i /><i /><i /></span>
+          <Image
+            src="/reporithm-mark.png"
+            alt=""
+            width={36}
+            height={36}
+            priority
+            className="rounded-xl"
+          />
           <span className="text-lg font-semibold tracking-[-0.035em]">Reporithm</span>
         </Link>
 

@@ -91,43 +91,21 @@ a {
   background: conic-gradient(#34d399 var(--score), rgb(255 255 255 / 0.1) 0);
 }
 
-.logo-mark {
-  display: inline-flex;
-  height: 30px;
-  width: 30px;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  border-radius: 9px;
-  background: #181b17;
+@keyframes loading-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
 }
 
-.dark .logo-mark {
-  background: #6ee7b7;
-}
-
-.logo-mark i {
-  display: block;
-  width: 2px;
-  border-radius: 999px;
-  background: #6ee7b7;
-}
-
-.dark .logo-mark i {
-  background: #052e16;
-}
-
-.logo-mark i:nth-child(1),
-.logo-mark i:nth-child(4) {
-  height: 7px;
-}
-
-.logo-mark i:nth-child(2) {
-  height: 16px;
-}
-
-.logo-mark i:nth-child(3) {
-  height: 11px;
+.loading-copy {
+  animation: loading-copy-in 280ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

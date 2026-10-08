@@ -274,7 +274,7 @@ function recommendationsFor(input: {
   return recommendations.sort((a, b) => order[a.priority] - order[b.priority]).slice(0, 5);
 }
 
-export async function analyzeGitHubRepository(owner: string, repositoryName: string): Promise<RepositoryAnalysis> {
+export async function analyzeGitHubRepository(owner: string, repositoryName: string): Promise<Omit<RepositoryAnalysis, "sonar">> {
   const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repositoryName)}`;
   const { data: repository } = await githubFetch<GitHubRepository>(path);
 

@@ -58,6 +58,66 @@ export interface Recommendation {
   category: string;
 }
 
+export type SonarStatus = "available" | "not_configured" | "project_not_found" | "unavailable";
+
+export interface SonarMetricSet {
+  bugs: number;
+  vulnerabilities: number;
+  securityHotspots: number;
+  codeSmells: number;
+  coverage: number | null;
+  duplicatedLinesDensity: number | null;
+  linesOfCode: number;
+  cognitiveComplexity: number;
+  complexity: number;
+  technicalDebtMinutes: number;
+  tests: number;
+  testFailures: number;
+  testErrors: number;
+  skippedTests: number;
+  reliabilityRating: string | null;
+  securityRating: string | null;
+  maintainabilityRating: string | null;
+}
+
+export interface SonarIssue {
+  key: string;
+  message: string;
+  severity: string;
+  type: string;
+  component: string;
+  line: number | null;
+  effort: string | null;
+  rule: string;
+}
+
+export interface SonarAnalysis {
+  status: SonarStatus;
+  projectKey: string | null;
+  projectName: string | null;
+  lastAnalysisAt: string | null;
+  message: string;
+  qualityGate: {
+    status: string;
+    conditions: Array<{
+      metricKey: string;
+      status: string;
+      actualValue: string | null;
+      threshold: string | null;
+    }>;
+  } | null;
+  metrics: SonarMetricSet | null;
+  issues: {
+    total: number;
+    blocker: number;
+    critical: number;
+    major: number;
+    minor: number;
+    info: number;
+    top: SonarIssue[];
+  } | null;
+}
+
 export interface RepositoryAnalysis {
   repository: RepositorySummary;
   languages: LanguageShare[];
@@ -73,6 +133,7 @@ export interface RepositoryAnalysis {
     summary: string;
     dimensions: HealthDimension[];
   };
+  sonar: SonarAnalysis;
   recommendations: Recommendation[];
   analyzedAt: string;
 }

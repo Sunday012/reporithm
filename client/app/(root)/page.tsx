@@ -1,19 +1,41 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { ArrowRight, GitBranch, Radar, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { ArrowRight, GitBranch, ListChecks, Radar, ScanSearch, ShieldCheck } from "lucide-react";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import AnalysisLoading from "@/components/AnalysisLoading";
 import type { RepositoryAnalysis } from "@/lib/types";
 import { parseGitHubRepository } from "@/lib/utils";
 
 const examples = ["facebook/react", "vercel/next.js", "shadcn-ui/ui"];
+const loadingMessages = [
+  "Reading GitHub signals",
+  "Cloning repository",
+  "Inspecting source files",
+  "Running quality rules",
+  "Checking vulnerabilities",
+  "Calculating quality gate",
+  "Preparing your report",
+];
 
 export default function Home() {
   const [repository, setRepository] = useState("");
   const [analysis, setAnalysis] = useState<RepositoryAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading) return;
+
+    document.getElementById("analysis")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    const interval = window.setInterval(() => {
+      setLoadingMessageIndex((current) => (current + 1) % loadingMessages.length);
+    }, 2_200);
+
+    return () => window.clearInterval(interval);
+  }, [isLoading]);
 
   async function analyze(value = repository) {
     const trimmed = value.trim();
@@ -25,6 +47,7 @@ export default function Home() {
     }
 
     setRepository(trimmed);
+    setLoadingMessageIndex(0);
     setIsLoading(true);
 
     try {
@@ -61,19 +84,11 @@ export default function Home() {
         <div className="glow-orb absolute left-1/2 top-0 -z-10 h-96 w-96 -translate-x-1/2 rounded-full" />
 
         <div className="mx-auto max-w-5xl text-center">
-          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-emerald-950/10 bg-white/70 px-3 py-1.5 text-xs font-semibold text-emerald-950 shadow-sm backdrop-blur dark:border-emerald-200/15 dark:bg-white/5 dark:text-emerald-200">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-            Live repository intelligence
-          </div>
-
           <h1 className="text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.055em] text-zinc-950 dark:text-zinc-50 sm:text-7xl lg:text-[5.5rem]">
             Know what a repository is <span className="text-emerald-600 dark:text-emerald-400">really</span> telling you.
           </h1>
           <p className="mx-auto mt-7 max-w-2xl text-balance text-base leading-7 text-zinc-600 dark:text-zinc-400 sm:text-lg">
-            Reporithm turns public GitHub signals into a clear health score, contributor readiness check, and focused next steps—in seconds.
+            Reporithm combines live GitHub signals with SonarQube code analysis for a clear view of project health, security, and maintainability.
           </p>
 
           <form onSubmit={onSubmit} className="mx-auto mt-10 max-w-3xl text-left">
@@ -94,10 +109,16 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-wait disabled:opacity-60 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-wait disabled:opacity-60 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300 sm:min-w-56"
               >
-                {isLoading ? "Reading signals…" : "Analyze repository"}
-                {!isLoading && <ArrowRight className="h-4 w-4" />}
+                {isLoading ? (
+                  <span key={loadingMessageIndex} className="loading-copy inline-flex items-center">
+                    {loadingMessages[loadingMessageIndex]}
+                    <span aria-hidden="true" className="ml-1 inline-block h-4 w-px animate-pulse bg-current" />
+                  </span>
+                ) : (
+                  <><span>Analyze repository</span><ArrowRight className="h-4 w-4" /></>
+                )}
               </button>
             </div>
             {error && <p role="alert" className="mt-3 pl-2 text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
@@ -115,7 +136,7 @@ export default function Home() {
       </section>
 
       <section id="analysis" className="scroll-mt-24 px-5 py-16 sm:px-8 sm:py-24">
-        {isLoading ? <AnalysisLoading /> : analysis ? <AnalysisDashboard analysis={analysis} /> : <ProductPrimer />}
+        {isLoading ? <AnalysisLoading message={loadingMessages[loadingMessageIndex]} /> : analysis ? <AnalysisDashboard analysis={analysis} /> : <ProductPrimer />}
       </section>
     </main>
   );
@@ -124,8 +145,8 @@ export default function Home() {
 function ProductPrimer() {
   const features = [
     { icon: Radar, number: "01", title: "Read the pulse", copy: "Freshness, commits, contributors, issues, and pull requests—collected from live GitHub data." },
-    { icon: ShieldCheck, number: "02", title: "Check the foundations", copy: "See whether licensing, security guidance, templates, and contributor docs are in place." },
-    { icon: Sparkles, number: "03", title: "Know what to fix", copy: "Get a transparent 100-point score and recommendations ordered by impact, not noise." },
+    { icon: ShieldCheck, number: "02", title: "Inspect the code", copy: "Use SonarQube to surface bugs, vulnerabilities, smells, coverage, duplication, and technical debt." },
+    { icon: ListChecks, number: "03", title: "Know what to fix", copy: "Separate verified code findings from repository-health signals and prioritize the work that matters." },
   ];
 
   return (
@@ -150,7 +171,7 @@ function ProductPrimer() {
         ))}
       </div>
       <div className="mt-10 flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
-        <ScanSearch className="h-4 w-4" /> Public repositories only · No sign-in required
+        <ScanSearch className="h-4 w-4" /> GitHub context · SonarQube code intelligence · Transparent results
       </div>
     </div>
   );
