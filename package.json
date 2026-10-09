@@ -6,6 +6,9 @@
     "sonar:stop": "docker compose -f compose.sonarqube.yml stop",
     "sonar:setup": "node scripts/setup-sonarqube.mjs",
     "sonar:scan": "node scripts/scan-local.mjs",
-    "sonar:scan:github": "node scripts/scan-github.mjs"
+    "sonar:scan:github": "node scripts/scan-github.mjs",
+    "production:start": "docker compose --env-file deploy/.env.production -f deploy/compose.production.yml up -d --build",
+    "production:stop": "docker compose --env-file deploy/.env.production -f deploy/compose.production.yml stop",
+    "production:logs": "docker compose --env-file deploy/.env.production -f deploy/compose.production.yml logs -f"
   }
 }

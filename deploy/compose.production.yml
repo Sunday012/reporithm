@@ -1,0 +1,109 @@
+name: reporithm-production
+
+services:
+  database:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sonar
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env.production}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - sonar_postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+
+  sonarqube:
+    image: ${SONARQUBE_IMAGE:-sonarqube:26.9.0.129388-community}
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://database:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env.production}
+      SONAR_AUTH_JWTBASE64HS256SECRET: ${SONAR_AUTH_JWTBASE64HS256SECRET:?Set SONAR_AUTH_JWTBASE64HS256SECRET in deploy/.env.production}
+    expose:
+      - "9000"
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc: 8192
+    volumes:
+      - sonar_data:/opt/sonarqube/data
+      - sonar_extensions:/opt/sonarqube/extensions
+      - sonar_logs:/opt/sonarqube/logs
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+
+  scanner-worker:
+    build:
+      context: ../scanner-worker
+    restart: unless-stopped
+    depends_on:
+      - sonarqube
+    environment:
+      PORT: "8787"
+      SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONARQUBE_TOKEN:?Set SONARQUBE_TOKEN in deploy/.env.production}
+      SCAN_WORKER_SECRET: ${SCAN_WORKER_SECRET:?Set SCAN_WORKER_SECRET in deploy/.env.production}
+      MAX_CONCURRENT_SCANS: ${MAX_CONCURRENT_SCANS:-1}
+      MAX_QUEUED_SCANS: ${MAX_QUEUED_SCANS:-10}
+      MAX_CHECKOUT_MB: ${MAX_CHECKOUT_MB:-500}
+      SCAN_TIMEOUT_MS: ${SCAN_TIMEOUT_MS:-210000}
+    expose:
+      - "8787"
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,uid=1000,gid=1000,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      - sonarqube
+      - scanner-worker
+    environment:
+      SONAR_HOSTNAME: ${SONAR_HOSTNAME:?Set SONAR_HOSTNAME in deploy/.env.production}
+      SCANNER_HOSTNAME: ${SCANNER_HOSTNAME:?Set SCANNER_HOSTNAME in deploy/.env.production}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in deploy/.env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  backend:
+
+volumes:
+  sonar_postgres_data:
+  sonar_data:
+  sonar_extensions:
+  sonar_logs:
+  caddy_data:
+  caddy_config:

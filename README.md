@@ -81,3 +81,9 @@ Coverage requires the repository's test runner to produce a supported coverage r
 The included local scanner analyzes this repository with the `Sunday012_reporithm` project key, matching the default `{owner}_{repo}` lookup convention.
 
 The GitHub integration runs in a server-side Next.js route, keeping credentials out of the browser without requiring a separate backend service.
+
+### Production deployment
+
+Vercel cannot run the local Docker-based scanner. The production path keeps the Next.js application on Vercel and runs SonarQube, PostgreSQL, and the authenticated scanner worker on a Linux VPS.
+
+See [deploy/README.md](deploy/README.md) for the host requirements, HTTPS/DNS setup, secrets, startup sequence, and exact Vercel environment variables. Do not deploy `compose.sonarqube.yml` to an internet-facing host; it is intentionally configured for local development.

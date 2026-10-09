@@ -1,0 +1,13 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$SONAR_HOSTNAME} {
+	encode zstd gzip
+	reverse_proxy sonarqube:9000
+}
+
+{$SCANNER_HOSTNAME} {
+	encode zstd gzip
+	reverse_proxy scanner-worker:8787
+}
