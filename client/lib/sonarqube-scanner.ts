@@ -20,6 +20,13 @@ type WorkerJob = {
   error?: string;
 };
 
+export class AnalysisQuotaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnalysisQuotaError";
+  }
+}
+
 const wait = (milliseconds: number) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
 
 function workerConfiguration() {
@@ -63,6 +70,47 @@ async function workerFetch(url: string, secret: string, init?: RequestInit) {
   }
 
   return response;
+}
+
+export async function reserveAnalysisQuota(visitorId: string) {
+  const configuration = workerConfiguration();
+  if (!configuration) return null;
+
+  const response = await fetch(`${configuration.url}/v1/quota/reservations`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${configuration.secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ visitorId }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 429) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new AnalysisQuotaError(payload.error || "Your free repository analysis has already been used.");
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Analysis quota request failed with status ${response.status}.`);
+  }
+  const payload = (await response.json()) as { reservationId?: string };
+  if (!payload.reservationId) throw new Error("Analysis quota service returned an invalid reservation.");
+
+  return payload.reservationId;
+}
+
+export async function finishAnalysisQuota(reservationId: string | null, commit: boolean) {
+  if (!reservationId) return;
+  const configuration = workerConfiguration();
+  if (!configuration) return;
+
+  await workerFetch(
+    `${configuration.url}/v1/quota/reservations/${encodeURIComponent(reservationId)}`,
+    configuration.secret,
+    { method: commit ? "POST" : "DELETE" },
+  );
 }
 
 async function scanWithRemoteWorker(repositoryUrl: string, configuration: { url: string; secret: string }) {

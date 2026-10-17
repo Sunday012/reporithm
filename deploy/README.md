@@ -82,9 +82,12 @@ SONARQUBE_PROJECT_KEY_TEMPLATE={owner}_{repo}
 SCAN_WORKER_URL=https://scanner.example.com
 SCAN_WORKER_SECRET=the-same-random-worker-secret
 SCAN_WORKER_TIMEOUT_MS=220000
+NEXT_PUBLIC_SIGN_UP_URL=https://your-signup-or-waitlist-page.example
 ```
 
 Redeploy Reporithm after saving the variables. These values are read only by the server-side Next.js route and are not bundled into the browser. Add a Vercel Firewall rate limit for `POST /api/analyze` before promoting the app broadly; the worker also enforces one active scan, a bounded queue, repository-size limits, timeouts, and one retained result per repository to reduce repeat work.
+
+Anonymous visitors receive one successful analysis by default. The worker stores privacy-preserving visitor hashes and quota usage in the persistent `scanner_quota_data` volume. Change `MAX_FREE_ANALYSES` in `deploy/.env.production` only when you intentionally want to alter the free allowance.
 
 ## Operations
 

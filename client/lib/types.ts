@@ -136,4 +136,8 @@ export interface RepositoryAnalysis {
   sonar: SonarAnalysis;
   recommendations: Recommendation[];
   analyzedAt: string;
+  quota?: {
+    remaining: number;
+    signupUrl: string | null;
+  };
 }

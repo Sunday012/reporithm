@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,9 +11,11 @@ const maximumQueuedScans = integerEnvironment("MAX_QUEUED_SCANS", 10, 1, 100);
 const maximumCheckoutMb = integerEnvironment("MAX_CHECKOUT_MB", 500, 10, 2_000);
 const scanTimeoutMs = integerEnvironment("SCAN_TIMEOUT_MS", 240_000, 30_000, 900_000);
 const jobRetentionMs = integerEnvironment("JOB_RETENTION_MS", 3_600_000, 60_000, 86_400_000);
+const maximumFreeAnalyses = integerEnvironment("MAX_FREE_ANALYSES", 1, 1, 100);
 const workerSecret = requiredEnvironment("SCAN_WORKER_SECRET");
 const sonarHostUrl = requiredEnvironment("SONAR_HOST_URL").replace(/\/$/, "");
 const sonarToken = requiredEnvironment("SONAR_TOKEN");
+const quotaFile = process.env.QUOTA_FILE?.trim() || "/data/analysis-quota.json";
 
 if (Buffer.byteLength(workerSecret) < 32) {
   throw new Error("SCAN_WORKER_SECRET must contain at least 32 bytes.");
@@ -21,7 +23,10 @@ if (Buffer.byteLength(workerSecret) < 32) {
 
 const jobs = new Map();
 const queue = [];
+const usage = new Map();
+const reservations = new Map();
 let activeScans = 0;
+let quotaWrite = Promise.resolve();
 
 function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
@@ -54,6 +59,84 @@ function json(response, status, body) {
     "X-Content-Type-Options": "nosniff",
   });
   response.end(payload);
+}
+
+function persistQuota() {
+  const directory = quotaFile.slice(0, quotaFile.lastIndexOf("/")) || ".";
+  const temporaryFile = `${quotaFile}.tmp`;
+  const payload = JSON.stringify({ usage: Object.fromEntries(usage), reservations: Object.fromEntries(reservations) });
+  quotaWrite = quotaWrite.catch(() => undefined).then(async () => {
+    await mkdir(directory, { recursive: true });
+    await writeFile(temporaryFile, payload, { mode: 0o600 });
+    await rename(temporaryFile, quotaFile);
+  });
+  return quotaWrite;
+}
+
+async function loadQuota() {
+  try {
+    const stored = JSON.parse(await readFile(quotaFile, "utf8"));
+    for (const [visitorId, count] of Object.entries(stored.usage ?? {})) {
+      if (/^[a-f0-9]{64}$/.test(visitorId) && Number.isInteger(count) && count >= 0) usage.set(visitorId, count);
+    }
+    for (const [reservationId, reservation] of Object.entries(stored.reservations ?? {})) {
+      if (
+        /^[0-9a-f-]{36}$/i.test(reservationId) &&
+        reservation &&
+        /^[a-f0-9]{64}$/.test(reservation.visitorId) &&
+        Number.isFinite(Date.parse(reservation.createdAt))
+      ) {
+        reservations.set(reservationId, reservation);
+      }
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+function validVisitorId(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+async function reserveAnalysis(request, response) {
+  try {
+    const { visitorId } = await readJson(request);
+    if (!validVisitorId(visitorId)) {
+      json(response, 400, { error: "A valid visitor identifier is required." });
+      return;
+    }
+
+    const alreadyReserved = [...reservations.values()].some((reservation) => reservation.visitorId === visitorId);
+    if ((usage.get(visitorId) ?? 0) >= maximumFreeAnalyses || alreadyReserved) {
+      json(response, 429, {
+        code: "free_analysis_used",
+        error: "Your free repository analysis has already been used.",
+      });
+      return;
+    }
+
+    const reservationId = randomUUID();
+    reservations.set(reservationId, { visitorId, createdAt: new Date().toISOString() });
+    await persistQuota();
+    json(response, 201, { reservationId, remaining: Math.max(0, maximumFreeAnalyses - 1) });
+  } catch (error) {
+    json(response, 400, { error: error instanceof Error ? error.message : "Invalid quota request." });
+  }
+}
+
+async function finishReservation(reservationId, commit, response) {
+  const reservation = reservations.get(reservationId);
+  if (!reservation) {
+    json(response, 404, { error: "Analysis reservation not found." });
+    return;
+  }
+
+  if (commit) usage.set(reservation.visitorId, (usage.get(reservation.visitorId) ?? 0) + 1);
+  reservations.delete(reservationId);
+  await persistQuota();
+  json(response, 200, {
+    remaining: Math.max(0, maximumFreeAnalyses - (usage.get(reservation.visitorId) ?? 0)),
+  });
 }
 
 async function readJson(request) {
@@ -252,6 +335,21 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/quota/reservations") {
+    await reserveAnalysis(request, response);
+    return;
+  }
+
+  const quotaMatch = url.pathname.match(/^\/v1\/quota\/reservations\/([0-9a-f-]+)$/i);
+  if (quotaMatch && request.method === "POST") {
+    await finishReservation(quotaMatch[1], true, response);
+    return;
+  }
+  if (quotaMatch && request.method === "DELETE") {
+    await finishReservation(quotaMatch[1], false, response);
+    return;
+  }
+
   const match = request.method === "GET" && url.pathname.match(/^\/v1\/scans\/([0-9a-f-]+)$/i);
   if (match) {
     const job = jobs.get(match[1]);
@@ -265,6 +363,7 @@ const server = createServer(async (request, response) => {
 
 server.requestTimeout = 20_000;
 server.headersTimeout = 10_000;
+await loadQuota();
 server.listen(port, "0.0.0.0", () => console.log(`Reporithm scan worker listening on port ${port}.`));
 
 setInterval(() => {
@@ -272,6 +371,14 @@ setInterval(() => {
   for (const [id, job] of jobs) {
     if (job.finishedAt && Date.parse(job.finishedAt) < cutoff) jobs.delete(id);
   }
+  let quotaChanged = false;
+  for (const [id, reservation] of reservations) {
+    if (Date.parse(reservation.createdAt) < cutoff) {
+      reservations.delete(id);
+      quotaChanged = true;
+    }
+  }
+  if (quotaChanged) persistQuota().catch((error) => console.error("Could not persist quota cleanup:", error));
 }, 60_000).unref();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowRight, GitBranch, ListChecks, Radar, ScanSearch, ShieldCheck } from "lucide-react";
+import { ArrowRight, GitBranch, ListChecks, LockKeyhole, Radar, ScanSearch, ShieldCheck } from "lucide-react";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import AnalysisLoading from "@/components/AnalysisLoading";
 import type { RepositoryAnalysis } from "@/lib/types";
@@ -18,12 +18,20 @@ const loadingMessages = [
   "Preparing your report",
 ];
 
+type AnalysisApiError = {
+  code?: string;
+  error: string;
+  signupUrl?: string | null;
+};
+
 export default function Home() {
   const [repository, setRepository] = useState("");
   const [analysis, setAnalysis] = useState<RepositoryAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [freeAnalysisUsed, setFreeAnalysisUsed] = useState(false);
+  const [quotaGate, setQuotaGate] = useState<{ message: string; signupUrl: string | null } | null>(null);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -40,6 +48,7 @@ export default function Home() {
   async function analyze(value = repository) {
     const trimmed = value.trim();
     setError("");
+    setQuotaGate(null);
 
     if (!parseGitHubRepository(trimmed)) {
       setError("Enter a valid GitHub URL or owner/repository.");
@@ -56,13 +65,21 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repository: trimmed }),
       });
-      const payload = (await response.json()) as RepositoryAnalysis | { error: string };
+      const payload = (await response.json()) as RepositoryAnalysis | AnalysisApiError;
 
       if (!response.ok || "error" in payload) {
+        if ("code" in payload && payload.code === "free_analysis_used") {
+          setAnalysis(null);
+          setFreeAnalysisUsed(true);
+          setQuotaGate({ message: payload.error, signupUrl: payload.signupUrl ?? null });
+          window.setTimeout(() => document.getElementById("analysis")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+          return;
+        }
         throw new Error("error" in payload ? payload.error : "Analysis failed.");
       }
 
       setAnalysis(payload);
+      setFreeAnalysisUsed(payload.quota?.remaining === 0);
       window.setTimeout(() => document.getElementById("analysis")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (caught) {
       setAnalysis(null);
@@ -108,26 +125,33 @@ export default function Home() {
               </div>
               <button
                 type="submit"
-                disabled={isLoading}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-wait disabled:opacity-60 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300 sm:min-w-56"
+                disabled={isLoading || freeAnalysisUsed}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300 sm:min-w-56"
               >
                 {isLoading ? (
                   <span key={loadingMessageIndex} className="loading-copy inline-flex items-center">
                     {loadingMessages[loadingMessageIndex]}
                     <span aria-hidden="true" className="ml-1 inline-block h-4 w-px animate-pulse bg-current" />
                   </span>
+                ) : freeAnalysisUsed ? (
+                  <><LockKeyhole className="h-4 w-4" /><span>Free analysis used</span></>
                 ) : (
                   <><span>Analyze repository</span><ArrowRight className="h-4 w-4" /></>
                 )}
               </button>
             </div>
             {error && <p role="alert" className="mt-3 pl-2 text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
+            {freeAnalysisUsed && !error && (
+              <p className="mt-3 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                Your one free analysis has been used. {analysis?.quota?.signupUrl ? <a href={analysis.quota.signupUrl} className="font-semibold text-emerald-700 underline underline-offset-4 dark:text-emerald-300">Get more analyses</a> : "More analysis plans are coming soon."}
+              </p>
+            )}
           </form>
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs text-zinc-500 dark:text-zinc-500">
             <span>Try an example:</span>
             {examples.map((example) => (
-              <button key={example} type="button" onClick={() => void analyze(example)} className="rounded-full border border-zinc-300 bg-white/60 px-2.5 py-1 font-mono transition-colors hover:border-emerald-500 hover:text-emerald-700 dark:border-white/10 dark:bg-white/5 dark:hover:text-emerald-300">
+              <button key={example} type="button" disabled={isLoading || freeAnalysisUsed} onClick={() => void analyze(example)} className="rounded-full border border-zinc-300 bg-white/60 px-2.5 py-1 font-mono transition-colors hover:border-emerald-500 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:text-emerald-300">
                 {example}
               </button>
             ))}
@@ -136,9 +160,29 @@ export default function Home() {
       </section>
 
       <section id="analysis" className="scroll-mt-24 px-5 py-16 sm:px-8 sm:py-24">
-        {isLoading ? <AnalysisLoading message={loadingMessages[loadingMessageIndex]} /> : analysis ? <AnalysisDashboard analysis={analysis} /> : <ProductPrimer />}
+        {isLoading ? <AnalysisLoading message={loadingMessages[loadingMessageIndex]} /> : quotaGate ? <FreeAnalysisGate {...quotaGate} /> : analysis ? <AnalysisDashboard analysis={analysis} /> : <ProductPrimer />}
       </section>
     </main>
+  );
+}
+
+function FreeAnalysisGate({ message, signupUrl }: { message: string; signupUrl: string | null }) {
+  return (
+    <div className="mx-auto max-w-2xl rounded-3xl border border-black/10 bg-white/80 p-8 text-center shadow-sm dark:border-white/10 dark:bg-white/[0.035] sm:p-12">
+      <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+        <LockKeyhole className="h-6 w-6" />
+      </span>
+      <p className="eyebrow mt-6">Free analysis complete</p>
+      <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-zinc-950 dark:text-zinc-50">Want to inspect another repository?</h2>
+      <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-zinc-600 dark:text-zinc-400">{message} Sign up when access plans open to analyze more projects and keep your reports together.</p>
+      {signupUrl ? (
+        <a href={signupUrl} className="mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300">
+          Get more analyses <ArrowRight className="h-4 w-4" />
+        </a>
+      ) : (
+        <p className="mt-7 text-sm font-semibold text-emerald-700 dark:text-emerald-300">More analysis plans are coming soon.</p>
+      )}
+    </div>
   );
 }
 

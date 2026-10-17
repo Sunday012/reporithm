@@ -62,11 +62,15 @@ services:
       MAX_QUEUED_SCANS: ${MAX_QUEUED_SCANS:-10}
       MAX_CHECKOUT_MB: ${MAX_CHECKOUT_MB:-500}
       SCAN_TIMEOUT_MS: ${SCAN_TIMEOUT_MS:-210000}
+      MAX_FREE_ANALYSES: ${MAX_FREE_ANALYSES:-1}
+      QUOTA_FILE: /data/analysis-quota.json
     expose:
       - "8787"
     read_only: true
     tmpfs:
       - /tmp:size=2g,uid=1000,gid=1000,mode=1777
+    volumes:
+      - scanner_quota_data:/data
     cap_drop:
       - ALL
     security_opt:
@@ -105,5 +109,6 @@ volumes:
   sonar_data:
   sonar_extensions:
   sonar_logs:
+  scanner_quota_data:
   caddy_data:
   caddy_config:

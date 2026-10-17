@@ -10,6 +10,7 @@ RUN apt-get update \
 COPY --from=scanner /opt/sonar-scanner /opt/sonar-scanner
 COPY --from=java /opt/java/openjdk /opt/java/openjdk
 COPY --chown=node:node server.mjs /app/server.mjs
+RUN mkdir -p /data && chown node:node /data
 
 ENV JAVA_HOME=/opt/java/openjdk \
     NODE_ENV=production \

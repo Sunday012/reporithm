@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { analyzeGitHubRepository, GitHubApiError } from "@/lib/github-analysis";
 import { analyzeWithSonarQube } from "@/lib/sonarqube-analysis";
-import { automaticScanningEnabled, scanGitHubRepository } from "@/lib/sonarqube-scanner";
+import {
+  AnalysisQuotaError,
+  automaticScanningEnabled,
+  finishAnalysisQuota,
+  reserveAnalysisQuota,
+  scanGitHubRepository,
+} from "@/lib/sonarqube-scanner";
 import { parseGitHubRepository } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -9,7 +16,20 @@ export const maxDuration = 300;
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function visitorId(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const address = forwardedFor || request.headers.get("x-real-ip") || "unknown";
+  const userAgent = request.headers.get("user-agent") || "unknown";
+  const language = request.headers.get("accept-language") || "unknown";
+  return createHash("sha256").update(`${address}\0${userAgent}\0${language}`).digest("hex");
+}
+
+function signupUrl() {
+  return process.env.NEXT_PUBLIC_SIGN_UP_URL?.trim() || null;
+}
+
 export async function POST(request: Request) {
+  let reservationId: string | null = null;
   try {
     const body = (await request.json()) as { repository?: unknown };
     if (typeof body.repository !== "string") {
@@ -23,6 +43,8 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    reservationId = await reserveAnalysisQuota(visitorId(request));
 
     const analysis = await analyzeGitHubRepository(parsed.owner, parsed.repository);
     let sonar = await analyzeWithSonarQube(analysis.repository.owner, analysis.repository.name);
@@ -48,10 +70,24 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ...analysis, sonar }, {
+    await finishAnalysisQuota(reservationId, true);
+    reservationId = null;
+
+    return NextResponse.json({ ...analysis, sonar, quota: { remaining: 0, signupUrl: signupUrl() } }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
+    if (reservationId) {
+      await finishAnalysisQuota(reservationId, false).catch((releaseError) => {
+        console.error("Could not release analysis quota reservation", releaseError);
+      });
+    }
+    if (error instanceof AnalysisQuotaError) {
+      return NextResponse.json(
+        { code: "free_analysis_used", error: error.message, signupUrl: signupUrl() },
+        { status: 429, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
     if (error instanceof GitHubApiError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
