@@ -70,10 +70,11 @@ export async function POST(request: Request) {
       }
     }
 
-    await finishAnalysisQuota(reservationId, true);
+    const completed = sonar.status === "available";
+    await finishAnalysisQuota(reservationId, completed);
     reservationId = null;
 
-    return NextResponse.json({ ...analysis, sonar, quota: { remaining: 0, signupUrl: signupUrl() } }, {
+    return NextResponse.json({ ...analysis, sonar, quota: { remaining: completed ? 0 : 1, signupUrl: signupUrl() } }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {

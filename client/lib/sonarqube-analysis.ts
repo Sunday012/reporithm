@@ -23,11 +23,14 @@ const metricKeys = [
 interface SonarProject {
   key: string;
   name: string;
-  lastAnalysisDate?: string;
 }
 
-interface ProjectsResponse {
+interface ComponentsResponse {
   components?: SonarProject[];
+}
+
+interface ComponentDetailsResponse {
+  component?: SonarProject & { analysisDate?: string };
 }
 
 interface MeasuresResponse {
@@ -172,27 +175,30 @@ export async function analyzeWithSonarQube(owner: string, repository: string): P
 
   try {
     const candidates = projectCandidates(owner, repository);
-    const query = new URLSearchParams({ projects: candidates.join(","), ps: String(candidates.length) });
-    const projects = await sonarFetch<ProjectsResponse>(configuredUrl, `/api/projects/search?${query}`, token);
+    const query = new URLSearchParams({ qualifiers: "TRK", q: repository, ps: "100" });
+    const projects = await sonarFetch<ComponentsResponse>(configuredUrl, `/api/components/search?${query}`, token);
     const project = candidates
       .map((candidate) => projects.components?.find((component) => component.key === candidate))
       .find((component): component is SonarProject => Boolean(component));
 
-    if (!project || !project.lastAnalysisDate) {
+    if (!project) {
       return emptyAnalysis(
         "project_not_found",
-        project
-          ? `SonarQube project ${project.key} exists but has no completed analysis yet.`
-          : `No SonarQube project matched this repository. Expected one of: ${candidates.join(", ")}.`,
+        `No SonarQube project matched this repository. Expected one of: ${candidates.join(", ")}.`,
       );
     }
 
     const component = encodeURIComponent(project.key);
-    const [measures, qualityGate, issues] = await Promise.all([
+    const [details, measures, qualityGate, issues] = await Promise.all([
+      sonarFetch<ComponentDetailsResponse>(configuredUrl, `/api/components/show?component=${component}`, token),
       sonarFetch<MeasuresResponse>(configuredUrl, `/api/measures/component?component=${component}&metricKeys=${metricKeys.join(",")}`, token),
       sonarFetch<QualityGateResponse>(configuredUrl, `/api/qualitygates/project_status?projectKey=${component}`, token),
       sonarFetch<IssuesResponse>(configuredUrl, `/api/issues/search?componentKeys=${component}&resolved=false&ps=20&facets=severities&s=SEVERITY&asc=false`, token),
     ]);
+
+    if (!details.component?.analysisDate) {
+      return emptyAnalysis("project_not_found", `SonarQube project ${project.key} exists but has no completed analysis yet.`);
+    }
 
     const severity = new Map(
       issues.facets?.find((facet) => facet.property === "severities")?.values.map((value) => [value.val, value.count]) ?? [],
@@ -202,7 +208,7 @@ export async function analyzeWithSonarQube(owner: string, repository: string): P
       status: "available",
       projectKey: project.key,
       projectName: project.name,
-      lastAnalysisAt: project.lastAnalysisDate ?? null,
+      lastAnalysisAt: details.component.analysisDate,
       message: "Verified code-quality results from SonarQube.",
       qualityGate: {
         status: qualityGate.projectStatus?.status ?? "NONE",
