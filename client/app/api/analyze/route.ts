@@ -14,6 +14,7 @@ import { parseGitHubRepository } from "@/lib/utils";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+const analysisQuotaVersion = "2";
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function visitorId(request: Request) {
@@ -21,7 +22,9 @@ function visitorId(request: Request) {
   const address = forwardedFor || request.headers.get("x-real-ip") || "unknown";
   const userAgent = request.headers.get("user-agent") || "unknown";
   const language = request.headers.get("accept-language") || "unknown";
-  return createHash("sha256").update(`${address}\0${userAgent}\0${language}`).digest("hex");
+  return createHash("sha256")
+    .update(`${analysisQuotaVersion}\0${address}\0${userAgent}\0${language}`)
+    .digest("hex");
 }
 
 function signupUrl() {
